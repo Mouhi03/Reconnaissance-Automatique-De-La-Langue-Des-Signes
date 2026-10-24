@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASL Detection — AM</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  :root {
+    --bg:#080c10;--surface:#0d1117;--card:#111820;
+    --border:#1e2a36;--cyan:#00e5ff;--teal:#00b4aa;
+    --purple:#7c3aed;--pink:#e040fb;--green:#00e676;
+    --text:#e8f0f7;--muted:#4a6070;
+    --font:'Syne',sans-serif;--mono:'DM Mono',monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .wrap{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:24px 20px 60px;}
+  header{text-align:center;padding:32px 0 28px;}
+  .logo-tag{display:inline-flex;align-items:center;gap:8px;background:rgba(0,229,255,0.07);border:1px solid rgba(0,229,255,0.2);border-radius:20px;padding:4px 14px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);font-family:var(--mono);margin-bottom:14px;}
+  .logo-tag span{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:pulse 2s infinite;}
+  header h1{font-size:clamp(28px,5vw,48px);font-weight:800;letter-spacing:-1px;background:linear-gradient(135deg,#fff 0%,var(--cyan) 50%,var(--purple) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  header p{margin-top:10px;color:var(--muted);font-size:14px;font-family:var(--mono);}
+  .main-grid{display:grid;grid-template-columns:1fr 320px;gap:16px;margin-bottom:16px;}
+  @media(max-width:700px){.main-grid{grid-template-columns:1fr;}}
+  .cam-panel{background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+  .cam-top-bar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);}
+  .cam-top-bar .title{font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
+  .rec-dot{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:#ff4d4d;}
+  .rec-dot span{width:7px;height:7px;border-radius:50%;background:#ff4d4d;animation:pulse 1s infinite;}
+  .cam-feed{background:#05080b;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+  #cam-img{width:100%;height:100%;object-fit:cover;display:none;}
+  .cam-placeholder{display:flex;flex-direction:column;align-items:center;gap:14px;}
+  .cam-icon{width:64px;height:64px;border-radius:50%;background:rgba(0,229,255,0.08);border:2px solid rgba(0,229,255,0.2);display:flex;align-items:center;justify-content:center;font-size:28px;}
+  .corner{position:absolute;width:24px;height:24px;}
+  .corner.tl{top:10px;left:10px;border-top:2px solid var(--cyan);border-left:2px solid var(--cyan);}
+  .corner.tr{top:10px;right:10px;border-top:2px solid var(--cyan);border-right:2px solid var(--cyan);}
+  .corner.bl{bottom:10px;left:10px;border-bottom:2px solid var(--cyan);border-left:2px solid var(--cyan);}
+  .corner.br{bottom:10px;right:10px;border-bottom:2px solid var(--cyan);border-right:2px solid var(--cyan);}
+  .cam-btn-row{padding:14px 16px;display:flex;gap:10px;}
+  .btn{flex:1;padding:10px;border-radius:10px;border:none;font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;}
+  .btn-primary{background:linear-gradient(135deg,var(--cyan),var(--teal));color:#000;}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,229,255,0.3);}
+  .btn-danger{background:rgba(255,77,77,0.1);border:1px solid rgba(255,77,77,0.3);color:#ff6b6b;}
+  .btn-danger:hover{background:rgba(255,77,77,0.2);}
+  .btn-warning{background:rgba(255,180,0,0.1);border:1px solid rgba(255,180,0,0.3);color:#ffb400;}
+  .side-panel{display:flex;flex-direction:column;gap:12px;}
+  .info-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;}
+  .pred-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 20px;text-align:center;position:relative;overflow:hidden;}
+  .pred-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--purple));}
+  .pred-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin-bottom:6px;}
+  .pred-letter{font-size:72px;font-weight:800;line-height:1;background:linear-gradient(135deg,var(--cyan),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;transition:all 0.2s;}
+  .pred-arabic{font-size:28px;color:var(--muted);margin-top:4px;}
+  .stats-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .stat-box{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center;}
+  .stat-val{font-size:22px;font-weight:800;color:var(--cyan);font-family:var(--mono);}
+  .stat-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:2px;}
+  .conf-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .conf-header span{font-size:11px;font-family:var(--mono);color:var(--muted);}
+  .conf-header strong{font-size:13px;font-family:var(--mono);color:var(--green);}
+  .conf-bar-bg{height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden;margin-bottom:8px;}
+  .conf-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--cyan));border-radius:4px;transition:width 0.3s;}
+  .stab-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--purple),var(--pink));border-radius:4px;transition:width 0.3s;}
+  .status-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);}
+  .status-row:last-child{border-bottom:none;}
+  .status-row .lbl{font-size:12px;color:var(--muted);font-family:var(--mono);}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-family:var(--mono);}
+  .badge.active{background:rgba(0,230,118,0.1);color:var(--green);border:1px solid rgba(0,230,118,0.2);}
+  .badge.active::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+  .badge.inactive{background:rgba(100,116,139,0.1);color:var(--muted);border:1px solid rgba(100,116,139,0.2);}
+  .word-section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;}
+  .word-header{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin-bottom:10px;}
+  .word-display{background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-family:var(--mono);font-size:22px;color:var(--text);letter-spacing:4px;min-height:52px;display:flex;align-items:center;}
+  .cursor{display:inline-block;width:2px;height:22px;background:var(--cyan);animation:blink 1s infinite;margin-left:2px;}
+  .section-header{display:flex;align-items:center;gap:12px;margin:32px 0 20px;}
+  .section-header h2{font-size:22px;font-weight:800;}
+  .section-line{flex:1;height:1px;background:linear-gradient(90deg,var(--border),transparent);}
+  .asl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:10px;}
+  .asl-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 8px 10px;text-align:center;cursor:pointer;transition:all 0.2s;}
+  .asl-card:hover{border-color:rgba(0,229,255,0.4);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,229,255,0.12);}
+  .asl-card.active-letter{border-color:var(--cyan);box-shadow:0 0 20px rgba(0,229,255,0.3);background:rgba(0,229,255,0.05);}
+  .asl-emoji{font-size:28px;display:block;margin-bottom:6px;}
+  .asl-letter{font-size:16px;font-weight:800;color:var(--text);display:block;}
+  .asl-arabic{font-size:12px;color:var(--muted);display:block;margin-top:2px;}
+  .history-list{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+  .history-item{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid var(--border);animation:fadeIn 0.3s ease;}
+  .history-item .letter{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--cyan);}
+  .history-item .time{font-family:var(--mono);font-size:10px;color:var(--muted);}
+  .history-item .conf{font-family:var(--mono);font-size:10px;color:var(--green);}
+  .word-btn-row{display:flex;gap:8px;margin-top:10px;}
+  .word-btn-row .btn{font-size:11px;padding:7px;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo-tag"><span></span> ASL Real-Time Detection</div>
+    <h1>Détection ASL<br>en Temps Réel</h1>
+    <p>Alphabet ASL · MediaPipe · KNN · Traduction Arabe</p>
+  </header>
+
+  <div class="main-grid">
+    <div class="cam-panel">
+      <div class="cam-top-bar">
+        <span class="title">Flux Caméra</span>
+        <div class="rec-dot"><span></span><span id="rec-status">EN ATTENTE</span></div>
+      </div>
+      <div class="cam-feed">
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <img id="cam-img" alt="flux caméra">
+        <div class="cam-placeholder" id="cam-placeholder">
+          <div class="cam-icon">📷</div>
+          <p style="color:var(--muted);font-size:13px;font-family:var(--mono);">Appuie sur Démarrer</p>
+        </div>
+      </div>
+      <div class="cam-btn-row">
+        <button class="btn btn-primary" onclick="startCamera()">▶️ Démarrer</button>
+        <button class="btn btn-danger"  onclick="stopCamera()">■ Arrêter</button>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="pred-card">
+        <div class="pred-label">Signe Détecté</div>
+        <div class="pred-letter" id="pred-letter">—</div>
+        <div class="pred-arabic" id="pred-arabic"></div>
+      </div>
+
+      <div class="info-card">
+        <div class="stats-row">
+          <div class="stat-box"><div class="stat-val" id="det-count">0</div><div class="stat-lbl">Détections</div></div>
+          <div class="stat-box"><div class="stat-val">1</div><div class="stat-lbl">Mains</div></div>
+          <div class="stat-box"><div class="stat-val">KNN</div><div class="stat-lbl">Modèle</div></div>
+        </div>
+        <div style="margin-top:14px;">
+          <div class="conf-header"><span>Confiance</span><strong id="conf-val">0%</strong></div>
+          <div class="conf-bar-bg"><div class="conf-bar-fill" id="conf-bar"></div></div>
+          <div class="conf-header"><span>Stabilité</span><strong id="stab-val">0%</strong></div>
+          <div class="conf-bar-bg"><div class="stab-bar-fill" id="stab-bar"></div></div>
+        </div>
+        <div style="margin-top:12px;">
+          <div class="status-row"><span class="lbl">Statut</span><span class="badge active">Active</span></div>
+          <div class="status-row"><span class="lbl">Modèle</span><span class="badge active">KNN k=5</span></div>
+          <div class="status-row"><span class="lbl">Features</span><span class="badge inactive">78 dims</span></div>
+        </div>
+      </div>
+
+      <div class="word-section">
+        <div class="word-header">📝 Mot Formé</div>
+        <div class="word-display">
+          <span id="word-display"></span>
+          <div class="cursor"></div>
+        </div>
+        <div id="word-status" style="margin-top:10px;font-family:var(--mono);font-size:12px;min-height:20px;padding:6px 10px;border-radius:8px;transition:all 0.3s;"></div>
+        <div id="next-letter" style="margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--muted);min-height:18px;"></div>
+        <div id="definition" style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--teal);min-height:18px;font-style:italic;"></div>
+        <div class="word-btn-row">
+          <button class="btn btn-warning" onclick="deleteLetter()">⌫ Effacer</button>
+          <button class="btn btn-danger"  onclick="clearWord()">✕ Tout effacer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-card" style="margin-bottom:16px;">
+    <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin-bottom:10px;">⟳ Historique Récent</div>
+    <div class="history-list" id="history-list">
+      <div style="color:var(--muted);font-family:var(--mono);font-size:12px;">Aucune détection pour le moment...</div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <h2>Alphabet ASL</h2>
+    <div class="section-line"></div>
+    <span style="font-size:12px;color:var(--muted);font-family:var(--mono);">26 SIGNES</span>
+  </div>
+  <div class="asl-grid" id="asl-grid">
+    <div class="asl-card" data-letter="A"><span class="asl-emoji">✊</span><span class="asl-letter">A</span><span class="asl-arabic">أ</span></div>
+    <div class="asl-card" data-letter="B"><span class="asl-emoji">✋</span><span class="asl-letter">B</span><span class="asl-arabic">ب</span></div>
+    <div class="asl-card" data-letter="C"><span class="asl-emoji">🤌</span><span class="asl-letter">C</span><span class="asl-arabic">ج</span></div>
+    <div class="asl-card" data-letter="D"><span class="asl-emoji">👆</span><span class="asl-letter">D</span><span class="asl-arabic">د</span></div>
+    <div class="asl-card" data-letter="E"><span class="asl-emoji">🤞</span><span class="asl-letter">E</span><span class="asl-arabic">إ</span></div>
+    <div class="asl-card" data-letter="F"><span class="asl-emoji">🖖</span><span class="asl-letter">F</span><span class="asl-arabic">ف</span></div>
+    <div class="asl-card" data-letter="G"><span class="asl-emoji">👉</span><span class="asl-letter">G</span><span class="asl-arabic">ج</span></div>
+    <div class="asl-card" data-letter="H"><span class="asl-emoji">🤟</span><span class="asl-letter">H</span><span class="asl-arabic">هـ</span></div>
+    <div class="asl-card" data-letter="I"><span class="asl-emoji">🤙</span><span class="asl-letter">I</span><span class="asl-arabic">ي</span></div>
+    <div class="asl-card" data-letter="J"><span class="asl-emoji">✌️</span><span class="asl-letter">J</span><span class="asl-arabic">ج</span></div>
+    <div class="asl-card" data-letter="K"><span class="asl-emoji">🤘</span><span class="asl-letter">K</span><span class="asl-arabic">ك</span></div>
+    <div class="asl-card" data-letter="L"><span class="asl-emoji">👌</span><span class="asl-letter">L</span><span class="asl-arabic">ل</span></div>
+    <div class="asl-card" data-letter="M"><span class="asl-emoji">✊</span><span class="asl-letter">M</span><span class="asl-arabic">م</span></div>
+    <div class="asl-card" data-letter="N"><span class="asl-emoji">✊</span><span class="asl-letter">N</span><span class="asl-arabic">ن</span></div>
+    <div class="asl-card" data-letter="O"><span class="asl-emoji">👌</span><span class="asl-letter">O</span><span class="asl-arabic">و</span></div>
+    <div class="asl-card" data-letter="P"><span class="asl-emoji">👋</span><span class="asl-letter">P</span><span class="asl-arabic">ب</span></div>
+    <div class="asl-card" data-letter="Q"><span class="asl-emoji">🤌</span><span class="asl-letter">Q</span><span class="asl-arabic">ق</span></div>
+    <div class="asl-card" data-letter="R"><span class="asl-emoji">🤞</span><span class="asl-letter">R</span><span class="asl-arabic">ر</span></div>
+    <div class="asl-card" data-letter="S"><span class="asl-emoji">✊</span><span class="asl-letter">S</span><span class="asl-arabic">س</span></div>
+    <div class="asl-card" data-letter="T"><span class="asl-emoji">🖖</span><span class="asl-letter">T</span><span class="asl-arabic">ت</span></div>
+    <div class="asl-card" data-letter="U"><span class="asl-emoji">✌️</span><span class="asl-letter">U</span><span class="asl-arabic">و</span></div>
+    <div class="asl-card" data-letter="V"><span class="asl-emoji">✌️</span><span class="asl-letter">V</span><span class="asl-arabic">ف</span></div>
+    <div class="asl-card" data-letter="W"><span class="asl-emoji">🤙</span><span class="asl-letter">W</span><span class="asl-arabic">و</span></div>
+    <div class="asl-card" data-letter="X"><span class="asl-emoji">🤞</span><span class="asl-letter">X</span><span class="asl-arabic">كس</span></div>
+    <div class="asl-card" data-letter="Y"><span class="asl-emoji">🤙</span><span class="asl-letter">Y</span><span class="asl-arabic">ي</span></div>
+    <div class="asl-card" data-letter="Z"><span class="asl-emoji">👆</span><span class="asl-letter">Z</span><span class="asl-arabic">ز</span></div>
+  </div>
+
+  <div style="text-align:center;margin-top:40px;font-family:var(--mono);font-size:11px;color:var(--muted);">
+    ASL Detection Project · Ahlam · KNN + MediaPipe + Flask + WebSocket
+  </div>
+</div>
+
+<script>
+  const socket = io();
+  let currentLetter = '';
+
+  function startCamera() {
+    socket.emit('start');
+    document.getElementById('rec-status').textContent = 'LIVE';
+    document.getElementById('cam-img').style.display = 'block';
+    document.getElementById('cam-placeholder').style.display = 'none';
+  }
+
+  function stopCamera() {
+    socket.emit('stop');
+    document.getElementById('rec-status').textContent = 'EN ATTENTE';
+    document.getElementById('cam-img').style.display = 'none';
+    document.getElementById('cam-placeholder').style.display = 'flex';
+  }
+
+  function clearWord()    { socket.emit('clear_word'); }
+  function deleteLetter() { socket.emit('delete_letter'); }
+
+  socket.on('frame', (data) => {
+
+    // Image caméra
+    document.getElementById('cam-img').src = 'data:image/jpeg;base64,' + data.image;
+
+    // Lettre prédite
+    if (data.prediction !== currentLetter) {
+      currentLetter = data.prediction;
+      document.getElementById('pred-letter').textContent = data.prediction || '—';
+      document.getElementById('pred-arabic').textContent  = data.arabic   || '';
+      document.querySelectorAll('.asl-card').forEach(c => c.classList.remove('active-letter'));
+      if (data.prediction) {
+        const card = document.querySelector(`.asl-card[data-letter="${data.prediction}"]`);
+        if (card) card.classList.add('active-letter');
+      }
+    }
+
+    // Confiance
+    document.getElementById('conf-val').textContent = data.confidence + '%';
+    document.getElementById('conf-bar').style.width = data.confidence + '%';
+
+    // Stabilité
+    document.getElementById('stab-val').textContent = data.stability + '%';
+    document.getElementById('stab-bar').style.width = data.stability + '%';
+
+    // Détections
+    document.getElementById('det-count').textContent = data.det_count;
+
+    // Mot formé
+    document.getElementById('word-display').textContent = data.word;
+
+    // Statut du mot
+    const statusEl = document.getElementById('word-status');
+    if (data.word_status) {
+      statusEl.textContent = data.word_status;
+      const colors = {
+        'green':  { bg:'rgba(0,230,118,0.1)',  border:'rgba(0,230,118,0.3)',  text:'#00e676' },
+        'orange': { bg:'rgba(255,180,0,0.1)',   border:'rgba(255,180,0,0.3)',  text:'#ffb400' },
+        'red':    { bg:'rgba(255,77,77,0.1)',   border:'rgba(255,77,77,0.3)',  text:'#ff6b6b' }
+      };
+      const c = colors[data.word_status_color] || colors['red'];
+      statusEl.style.background = c.bg;
+      statusEl.style.border     = `1px solid ${c.border}`;
+      statusEl.style.color      = c.text;
+    } else {
+      statusEl.textContent      = '';
+      statusEl.style.background = 'transparent';
+      statusEl.style.border     = 'none';
+    }
+
+    // Lettre suivante suggérée
+    const nextEl = document.getElementById('next-letter');
+    nextEl.textContent = data.next_letter
+      ? `💡 Lettre suivante suggérée : ${data.next_letter}` : '';
+
+    // Définition
+    const defEl = document.getElementById('definition');
+    defEl.textContent = data.definition ? `📖 ${data.definition}` : '';
+
+    // Historique
+    if (data.history && data.history.length > 0) {
+      document.getElementById('history-list').innerHTML = data.history.map(h => `
+        <div class="history-item">
+          <span class="letter">${h.letter}</span>
+          <span style="color:var(--muted);font-family:var(--mono);font-size:13px;">${h.arabic}</span>
+          <span class="conf">${h.conf}</span>
+          <span class="time">${h.time}</span>
+        </div>
+      `).join('');
+    }
+  });
+</script>
+</body>
+</html>
